@@ -1,0 +1,116 @@
+const DEFAULT_RULES = [
+  {
+    id: "default-cloud",
+    name: "Cloud",
+    color: "blue",
+    patterns: ["aws.amazon.com", "*.amazon.com", "*.azure.com"]
+  },
+  {
+    id: "default-devops",
+    name: "DevOps",
+    color: "purple",
+    patterns: ["*.github.com", "*.bitbucket.org", "*.terraform.io", "*.harness.io"]
+  }
+];
+
+// Initialize default rules on first install
+chrome.runtime.onInstalled.addListener(async () => {
+  const data = await chrome.storage.sync.get("rules");
+  if (!data.rules) {
+    await chrome.storage.sync.set({ rules: DEFAULT_RULES });
+  }
+});
+
+// Open options page on extension icon click
+chrome.action.onClicked.addListener(() => {
+  chrome.runtime.openOptionsPage();
+});
+
+// Robust pattern-to-regex converter supporting wildcards and bare domains
+function patternToRegex(pattern) {
+  let clean = pattern.trim().toLowerCase().replace(/^https?:\/\//, "");
+  const escaped = clean.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+
+  if (!clean.includes("*")) {
+    return new RegExp(`^https?:\\/\\/([^\\/]+\\.)?${escaped}(\\/|$|\\?)`, "i");
+  }
+  return new RegExp(`^https?:\\/\\/${escaped}(\\/|$|\\?)`, "i");
+}
+
+function findMatchingRule(url, rules) {
+  if (!url || !url.startsWith("http")) return null;
+  for (const rule of rules) {
+    for (const pattern of rule.patterns) {
+      if (!pattern.trim()) continue;
+      if (patternToRegex(pattern).test(url)) return rule;
+    }
+  }
+  return null;
+}
+
+// Check if URL is safe to group
+function isRestrictedUrl(url) {
+  if (!url) return true;
+  const restrictedPrefixes = [
+    "edge://",
+    "chrome://",
+    "about:",
+    "chrome-extension://",
+    "edge-extension://",
+    "file://"
+  ];
+  return restrictedPrefixes.some((prefix) => url.startsWith(prefix));
+}
+
+async function handleTabGrouping(tab) {
+  if (!tab || tab.id === undefined) return;
+  const targetUrl = tab.url || tab.pendingUrl;
+
+  if (isRestrictedUrl(targetUrl)) return;
+  if (tab.groupId && tab.groupId !== -1) return; // Skip if already grouped
+
+  const { rules = [] } = await chrome.storage.sync.get("rules");
+  const matchedRule = findMatchingRule(targetUrl, rules);
+  if (!matchedRule) return;
+
+  try {
+    const existingGroups = await chrome.tabGroups.query({
+      windowId: tab.windowId,
+      title: matchedRule.name
+    });
+
+    let groupId;
+    if (existingGroups.length > 0) {
+      groupId = existingGroups[0].id;
+      await chrome.tabs.group({
+        tabIds: [tab.id],
+        groupId: groupId
+      });
+    } else {
+      groupId = await chrome.tabs.group({
+        tabIds: [tab.id],
+        createProperties: { windowId: tab.windowId }
+      });
+    }
+
+    // Force update the group title and color explicitly for Edge compatibility
+    await chrome.tabGroups.update(groupId, {
+      title: matchedRule.name,
+      color: matchedRule.color || "blue"
+    });
+  } catch (err) {
+    console.debug("Edge tab grouping handled with fallback:", err);
+  }
+}
+
+// Listen for tab updates
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" || changeInfo.url) {
+    handleTabGrouping(tab);
+  }
+});
+
+// Listen for brand-new tabs being created
+chrome.tabs.onCreated.addListener((tab) => {
+  handleTabGrouping(tab);
+});
