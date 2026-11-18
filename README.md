@@ -2,7 +2,13 @@
 
 A lightweight, high-performance browser extension for **Google Chrome** and **Microsoft Edge** that automatically organizes your tabs into custom color-coded groups based on user-defined domain and URL patterns.
 
-![Auto Tab Grouper Demo](./assets/demo.gif)---
+![Auto Tab Grouper Demo](./assets/demo.gif)
+
+### 🔗 Install
+- **Chrome Web Store:** [Install AutoTabGrouper](https://chromewebstore.google.com/detail/ajpignjimcgbedghdkihgefdhmlpgahc)
+- **Manual / Other Chromium Browsers (Edge, Brave):** Download `AutoTabGrouper-v1.0.0.zip` from **Assets** below, extract it, and load via `chrome://extensions` with **Developer mode** enabled.
+
+---
 
 ## ✨ Features
 
